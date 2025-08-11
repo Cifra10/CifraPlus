@@ -425,7 +425,6 @@
             submitButton.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> Validando...';
             submitButton.classList.add('cursor-not-allowed');
 
-            // 1. Validação Local
             const cpfValue = cpfInput.value.replace(/[^\d]+/g,'');
             const isCpfValid = validaCPF(cpfValue);
             const isPhoneValid = validaTelefone(phoneInput.value);
@@ -440,51 +439,55 @@
                 return; 
             }
 
-            // 2. Verifica se o CPF já existe na planilha
             submitButton.innerHTML = '<i class="fas fa-shield-alt fa-spin mr-2"></i> Verificando CPF...';
-            fetch(`${googleScriptUrl}?cpf=${cpfValue}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'exists') {
-                        // CPF já cadastrado, bloqueia o envio
+            
+            // --- CORREÇÃO NA LÓGICA DE ENVIO ---
+            // Usaremos async/await para garantir a ordem correta das operações
+            
+            async function handleSubmit() {
+                try {
+                    // 1. Verifica se o CPF já existe
+                    const checkResponse = await fetch(`${googleScriptUrl}?cpf=${cpfValue}`);
+                    const checkData = await checkResponse.json();
+
+                    if (checkData.status === 'exists') {
                         Swal.fire({ title: 'Cadastro Existente', text: 'O CPF informado já foi cadastrado em nosso sistema.', icon: 'warning', confirmButtonColor: '#F26322' });
                         reenableForm();
-                    } else {
-                        // CPF é novo, prossegue para o envio do e-mail
-                        submitButton.innerHTML = '<i class="fas fa-paper-plane fa-spin mr-2"></i> Enviando...';
-                        
-                        emailjs.sendForm('service_ei51uod', 'template_315xj8p', form)
-                            .then(() => {
-                                // 3. Se o e-mail foi enviado com sucesso, adiciona o CPF na planilha
-                                fetch(googleScriptUrl, {
-                                    method: 'POST',
-                                    body: JSON.stringify({ cpf: cpfValue }),
-                                    headers: { 'Content-Type': 'application/json' }
-                                }).catch(err => console.error("Erro ao salvar CPF:", err)); // Apenas loga o erro, não impede o usuário
-
-                                Swal.fire({
-                                    title: 'Sucesso!',
-                                    text: 'Sua solicitação foi enviada. Você será redirecionado.',
-                                    icon: 'success',
-                                    timer: 2000,
-                                    showConfirmButton: false,
-                                    allowOutsideClick: false
-                                }).then(() => {
-                                    window.location.href = 'obrigado.html';
-                                });
-
-                            }, (error) => {
-                                Swal.fire({ title: 'Erro de Envio!', text: 'Ocorreu uma falha ao enviar sua solicitação.', icon: 'error', confirmButtonColor: '#F26322' });
-                                reenableForm();
-                                console.error('Falha no EmailJS:', error);
-                            });
+                        return;
                     }
-                })
-                .catch(error => {
-                    console.error('Erro ao verificar CPF:', error);
-                    Swal.fire({ title: 'Erro de Verificação', text: 'Não foi possível verificar os dados. Tente novamente.', icon: 'error', confirmButtonColor: '#F26322' });
+
+                    // 2. CPF é novo, envia o e-mail
+                    submitButton.innerHTML = '<i class="fas fa-paper-plane fa-spin mr-2"></i> Enviando...';
+                    await emailjs.sendForm('service_ei51uod', 'template_315xj8p', form);
+
+                    // 3. E-mail enviado, agora salva o CPF na planilha
+                    await fetch(googleScriptUrl, {
+                        method: 'POST',
+                        body: JSON.stringify({ cpf: cpfValue }),
+                        headers: { 'Content-Type': 'application/json' },
+                        mode: 'no-cors' // Importante para evitar erro de CORS ao apenas enviar dados
+                    });
+
+                    // 4. Tudo deu certo, mostra mensagem de sucesso e redireciona
+                    Swal.fire({
+                        title: 'Sucesso!',
+                        text: 'Sua solicitação foi enviada. Você será redirecionado.',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false,
+                        allowOutsideClick: false
+                    }).then(() => {
+                        window.location.href = 'obrigado.html';
+                    });
+
+                } catch (error) {
+                    console.error('Ocorreu um erro no processo de envio:', error);
+                    Swal.fire({ title: 'Erro!', text: 'Ocorreu uma falha no processo de envio. Por favor, tente novamente.', icon: 'error', confirmButtonColor: '#F26322' });
                     reenableForm();
-                });
+                }
+            }
+            
+            handleSubmit();
         });
     
         // --- SCROLL SUAVE PARA ÂNCORAS ---
@@ -497,4 +500,3 @@
     </script>
 </body>
 </html>
-```
